@@ -143,7 +143,7 @@ fn main() {
     let elapsed = start.elapsed();
     println!("Connected river cells identified.");
     println!("Elapsed time: {:.2?}",elapsed);
-
+    print("This is on master")
     /*let coords: Vec<(u32,u32,f64)>= drainage
                         .iter()
                         .map(
