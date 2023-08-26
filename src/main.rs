@@ -104,7 +104,7 @@ fn search_drainage(start_index:u32,data:&mut Vec<RefCell<Node>>,threshold:f64,co
 
 
 fn main() {
-    let file = File::open("./accumulations/cells.json").expect("Failed to open file");
+    let file = File::open("./accumulations/cells_mid.json").expect("Failed to open file");
 
     let start = Instant::now();
     let deserialized: IndexMap<u32,Node> = serde_json::from_reader(file).expect("Failed to deserialize JSON file.");
@@ -120,8 +120,8 @@ fn main() {
     println!("JSON data successfuly serialized. Calculating HAND values ...");
     println!("Elapsed time: {:.2?}",elapsed);
 
-    let rows: u32 = 1047;
-    let cols: u32 = 1613;
+    let rows: u32 = 100;//1047;
+    let cols: u32 = 100;//1613;
 
     let mut hand: Array2<f64> = Array2::from_elem((rows as usize,cols as usize),-1.0);
     
