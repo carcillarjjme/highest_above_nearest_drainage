@@ -4,6 +4,7 @@ use std::io::Read;
 use std::collections::{HashMap,VecDeque};
 use std::process::id;
 use serde::{Deserialize, Serialize};
+use serde_json::value::Index;
 use std::cell::{RefCell,RefMut};
 use ndarray::Array2;
 use ndarray_npy::{ReadNpyError, ReadNpyExt, WriteNpyExt};
@@ -125,7 +126,9 @@ fn main() {
     let rows: u32 = 100;//1047;
     let cols: u32 = 100;//1613;
 
+
     let mut hand: Array2<f64> = Array2::from_elem((rows as usize,cols as usize),-1.0);
+    let mut drainage_neighbors: Vec<Vec<u32>> = vec![Vec::new();(rows * cols) as usize];
 
     let mut pb = ProgressBar::new((rows * cols) as u64);
     let sty = ProgressStyle::with_template(
@@ -144,7 +147,9 @@ fn main() {
             
             let start_index = id_hash(r,c,cols);
             let drainage = search_drainage(start_index, &mut data,drainage_threshold,cols);
-            hand[[r as usize, c as usize]] = drainage.len() as f64;
+            let drainage_len = drainage.len();
+            drainage_neighbors[start_index as usize] = drainage;
+            hand[[r as usize, c as usize]] = drainage_len as f64;
             //num_processed += 1;
             pb.inc(1);
         }
@@ -154,7 +159,6 @@ fn main() {
     let elapsed = start.elapsed();
     println!("Connected river cells identified.");
     println!("Elapsed time: {:.2?}",elapsed);
- 
 
     let writer = BufWriter::new(File::create("./accumulations/hand.npy").unwrap());
     match hand.write_npy(writer){
