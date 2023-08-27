@@ -149,6 +149,8 @@ fn main() {
             pb.inc(1);
         }
     }
+    
+    pb.finish();
     let elapsed = start.elapsed();
     println!("Connected river cells identified.");
     println!("Elapsed time: {:.2?}",elapsed);
