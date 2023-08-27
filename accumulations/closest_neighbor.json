@@ -1,0 +1,204 @@
+[
+    {
+        "cell_id": 0,
+        "closest": [
+            24,
+            25
+        ]
+    },
+    {
+        "cell_id": 1,
+        "closest": [
+            25,
+            24
+        ]
+    },
+    {
+        "cell_id": 2,
+        "closest": [
+            26,
+            25,
+            27,
+            24,
+            28
+        ]
+    },
+    {
+        "cell_id": 3,
+        "closest": [
+            27,
+            28
+        ]
+    },
+    {
+        "cell_id": 4,
+        "closest": [
+            28,
+            27,
+            29
+        ]
+    },
+    {
+        "cell_id": 5,
+        "closest": [
+            29,
+            28,
+            27
+        ]
+    },
+    {
+        "cell_id": 6,
+        "closest": [
+            24,
+            25
+        ]
+    },
+    {
+        "cell_id": 7,
+        "closest": [
+            25,
+            24
+        ]
+    },
+    {
+        "cell_id": 8,
+        "closest": [
+            26,
+            25,
+            27,
+            24,
+            28
+        ]
+    },
+    {
+        "cell_id": 9,
+        "closest": [
+            27,
+            28
+        ]
+    },
+    {
+        "cell_id": 10,
+        "closest": [
+            28,
+            27,
+            29
+        ]
+    },
+    {
+        "cell_id": 11,
+        "closest": [
+            29
+        ]
+    },
+    {
+        "cell_id": 12,
+        "closest": [
+            24,
+            25
+        ]
+    },
+    {
+        "cell_id": 13,
+        "closest": [
+            25,
+            24
+        ]
+    },
+    {
+        "cell_id": 14,
+        "closest": [
+            26,
+            25,
+            27,
+            24,
+            28
+        ]
+    },
+    {
+        "cell_id": 15,
+        "closest": [
+            27,
+            28
+        ]
+    },
+    {
+        "cell_id": 16,
+        "closest": [
+            28,
+            27
+        ]
+    },
+    {
+        "cell_id": 17,
+        "closest": [
+            29
+        ]
+    },
+    {
+        "cell_id": 18,
+        "closest": [
+            24
+        ]
+    },
+    {
+        "cell_id": 19,
+        "closest": [
+            25,
+            24
+        ]
+    },
+    {
+        "cell_id": 20,
+        "closest": [
+            26,
+            25,
+            27,
+            24,
+            28
+        ]
+    },
+    {
+        "cell_id": 21,
+        "closest": [
+            27,
+            28
+        ]
+    },
+    {
+        "cell_id": 22,
+        "closest": [
+            28
+        ]
+    },
+    {
+        "cell_id": 23,
+        "closest": [
+            29
+        ]
+    },
+    {
+        "cell_id": 24,
+        "closest": []
+    },
+    {
+        "cell_id": 25,
+        "closest": []
+    },
+    {
+        "cell_id": 26,
+        "closest": []
+    },
+    {
+        "cell_id": 27,
+        "closest": []
+    },
+    {
+        "cell_id": 28,
+        "closest": []
+    },
+    {
+        "cell_id": 29,
+        "closest": []
+    }
+]
