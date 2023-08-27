@@ -106,6 +106,7 @@ fn search_drainage(start_index:u32,data:&mut Vec<RefCell<Node>>,threshold:f64,co
 fn main() {
     let file = File::open("./accumulations/cells_mid.json").expect("Failed to open file");
 
+    println!("Loading graph data... (This may take a while)");
     let start = Instant::now();
     let deserialized: IndexMap<u32,Node> = serde_json::from_reader(file).expect("Failed to deserialize JSON file.");
     let vec_data:Vec<Node> = deserialized.values().cloned().collect();
@@ -120,46 +121,39 @@ fn main() {
     println!("JSON data successfuly serialized. Calculating HAND values ...");
     println!("Elapsed time: {:.2?}",elapsed);
 
+
     let rows: u32 = 100;//1047;
     let cols: u32 = 100;//1613;
 
     let mut hand: Array2<f64> = Array2::from_elem((rows as usize,cols as usize),-1.0);
+
+    let mut pb = ProgressBar::new((rows * cols) as u64);
+    let sty = ProgressStyle::with_template(
+                "[{elapsed_precise}] {bar:100.cyan/blue} {pos:>7}/{len:7} {msg}",
+            )
+            .unwrap()
+            .progress_chars("##-");
+    pb.set_style(sty);
+
     
     let start = Instant::now();
     let mut num_processed:u128 = 0;
     let drainage_threshold = 1000.0;
     for r in 0..rows {
         for c in 0..cols {
-            if num_processed % 10000 == 0 {
-                let progress = (num_processed * 100) /(rows as u128*cols as u128);
-                println!("[Nearby Paths] Progress {progress:.2}%");
-            }
+            
             let start_index = id_hash(r,c,cols);
             let drainage = search_drainage(start_index, &mut data,drainage_threshold,cols);
             hand[[r as usize, c as usize]] = drainage.len() as f64;
-            num_processed += 1;
+            //num_processed += 1;
+            pb.inc(1);
         }
     }
     let elapsed = start.elapsed();
     println!("Connected river cells identified.");
     println!("Elapsed time: {:.2?}",elapsed);
-    println!("This is on master");
-    /*let coords: Vec<(u32,u32,f64)>= drainage
-                        .iter()
-                        .map(
-                            |item| {
-                                let node = data[*item as usize].borrow();
-                                (node.row,node.col,node.accum)
-                            })
-                        .collect();
+ 
 
-    println!("Start: {:?}, Drainage Count: {},\nDrainage Nodes:\n{:?}",reverse_hash(start_index, cols),drainage.len(),drainage);
-    for (i,coord) in coords.iter().enumerate() {
-
-        println!("{}. {:?}",i+1,coord);
-    }*/
-
-    
     let writer = BufWriter::new(File::create("./accumulations/hand.npy").unwrap());
     match hand.write_npy(writer){
         Ok(_) => {println!("{} was written.","./accumulations/hand.npy")},
