@@ -11,7 +11,7 @@ use std::env;
 use std::io::BufWriter;
 use std::time::Instant;
 use indexmap::IndexMap;
-
+use indicatif::{ProgressBar,ProgressStyle};
 
 #[derive(Serialize, Deserialize, Debug,Clone)]
 struct Node {
