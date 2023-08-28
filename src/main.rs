@@ -92,8 +92,9 @@ fn manhattan(id_a:u32,id_b:u32,cols:u32) -> u32{
 /// * 'data' - a reference to the network data comprised of all nodes in the digital elevation model
 /// * 'threshold' - the value that discriminates a drainage node from non-drainage node
 /// * 'cols' - the numner of columns in the digital elevation model
-fn search_drainage(start_index:u32,data:&mut Vec<RefCell<Node>>,threshold:f64,cols:u32) ->Vec<u32> {
-    
+fn search_drainage(start_index:u32,data:&mut Vec<RefCell<Node>>,threshold:f64,rows:u32,cols:u32) ->Vec<u32> {
+    // TODO: Make this multithreaded
+    let data_len = rows * cols;
     let mut explored:Vec<u32> = Vec::with_capacity(2000);
     let mut stack:VecDeque<u32> = VecDeque::with_capacity(1000);
     let mut drainage:Vec<u32> = Vec::with_capacity(1000);
@@ -117,23 +118,24 @@ fn search_drainage(start_index:u32,data:&mut Vec<RefCell<Node>>,threshold:f64,co
             let neighbor_id = id_hash(row, col, cols);
 
             //if the index is within the data set
-            if let Some(element)  = data.get(neighbor_id as usize){
+            //if let Some(element)  = data.get(neighbor_id as usize){
                 
-                let neighbor_is_explored =  element.borrow().is_explored;
-                let neighbor_accum = element.borrow().accum;
+                //let neighbor_is_explored =  element.borrow().is_explored;
+                //let neighbor_accum = element.borrow().accum;
 
-                if !neighbor_is_explored {
+                if (!explored.contains(&neighbor_id)) && (neighbor_id < data_len) {
+                    let neighbor_accum = data[neighbor_id as usize].borrow().accum;
                     if neighbor_accum >= threshold {
                         drainage.push(neighbor_id);
                     } else {
                         stack.push_back(neighbor_id);
                     }
                     
-                    element.borrow_mut().is_explored = true;
+                    data[node_index as usize].borrow_mut().is_explored = true;
                     explored.push(neighbor_id);
                 }
                 
-            }
+            //}
 
         }
     }
@@ -423,7 +425,7 @@ fn main() {
         for c in 0..cols {
             
             let start_index = id_hash(r,c,cols);
-            let mut drainage_ids = search_drainage(start_index, &mut data,drainage_threshold,cols);
+            let mut drainage_ids = search_drainage(start_index, &mut data,drainage_threshold,rows,cols);
             /*let distance_from_cell:Vec<u32> = drainage_ids
                                                 .iter()
                                                 .map(|this_id|{
@@ -500,7 +502,7 @@ fn main() {
             let end_nodes = closest_drainage[start_node].borrow_mut().clone().closest;
             if end_nodes.len() > 0 {
                 for end_node in end_nodes {
-                    let mut clone_data = Arc::clone(&arc_data);
+                    let clone_data = Arc::clone(&arc_data);
                     //data.clone_into(&mut clone_data);
                     let clone_paths_to_drainage = Arc::clone(&paths_to_drainage);
                     let clone_pb = Arc::clone(&pb);
@@ -551,7 +553,7 @@ fn main() {
 
         if paths.len() == 0 {
             hand[[row as usize, col as usize]] = -2.0;
-            println!("{node_id} - Closest Drainage: None");
+            //println!("{node_id} - Closest Drainage: None");
         } else {
             let closest_drainage:u32 = select_paths(paths, &data, 0.9);
             let elev = node.elev;
@@ -563,7 +565,7 @@ fn main() {
 
             hand[[row as usize, col as usize]] = hand_value;
 
-            println!("{node_id} - Closest Drainage: {closest_drainage}, HAND: {hand_value}");
+            //println!("{node_id} - Closest Drainage: {closest_drainage}, HAND: {hand_value}");
         }
     }
 
@@ -633,7 +635,7 @@ fn main() {
     };
 
 
-    println!("Enter any to exit.");
+    println!("Press Enter to exit.");
     let mut _input = String::new();
     io::stdin().read_line(&mut _input).expect("Failed to read line.");
     print!("Program exited.");
