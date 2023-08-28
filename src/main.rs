@@ -1,4 +1,7 @@
 #![recursion_limit = "256"]
+#[macro_use]
+extern crate log;
+
 use std::borrow::BorrowMut;
 //use std::borrow::BorrowMut;
 use std::{fs::File, io::Write};
@@ -15,8 +18,9 @@ use std::io::BufWriter;
 use std::time::Instant;
 use indexmap::IndexMap;
 use indicatif::{ProgressBar,ProgressStyle};
-use std::num;
-
+use std::{num, path};
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 /// A struct representing the node data
 /// * 'row' - the row index of the node
@@ -166,48 +170,75 @@ fn search_drainage(start_index:u32,data:&mut Vec<RefCell<Node>>,threshold:f64,co
 fn dfs_modified(
     node_id:u32,
     end:u32,
+    rows:u32,
     cols:u32,
     threshold: f64,
     path:&mut Vec<u32>,
+    visited:&mut Vec<u32>,
     result:&mut Vec<Vec<u32>>,
     data: &Vec<RefCell<Node>>) {
-        
+    
+    visited.push(node_id.clone());
+    let data_len = rows * cols;
     let mut path = path.to_owned();
+    //println!("START:{node_id},END:{end}");
+    //println!("{:?}",visited);
     path.push(node_id);
     if node_id == end {
         result.push(path.clone());
     } else {
         let neighbor_locs = data[node_id as usize].borrow_mut().to_owned().neighbors;
+        //let parent_ids = data[node_id as usize].borrow_mut().to_owned().parents;
+        //let parent_ids:Vec<u32> = parent_ids.iter().map(|loc| id_hash(loc[0], loc[1], cols)).collect();
+
         for loc in neighbor_locs.iter() {
             let row = loc[0];
             let col = loc[1];
             let neighbor_id = &id_hash(row, col, cols);
-
-            let neighbor_accum = data[*neighbor_id as usize].borrow_mut().to_owned().accum;
-            if (*neighbor_id != end) && (path.len() > 2) {
-                //recursion in here
-                if (neighbor_accum < threshold) && (!path.contains(neighbor_id)) {
-                    dfs_modified(*neighbor_id,
-                                end,
-                                cols,
-                                threshold,
-                                &mut path,
-                                result,
-                                data);
-                }
-            } else {
-                //recursion in here (if the neighbor is the end or if the path consists of the neighbor and end)
-                //the only difference is we're not checking if neighbor is a drainage cell and we're not checking
-                //if the cell is already the end
+            //println!("{neighbor_id}");
+            //check if the neighbor is within bounds
+            if (neighbor_id < &data_len) && !visited.contains(neighbor_id) {
                 if !path.contains(neighbor_id) {
                     dfs_modified(*neighbor_id,
                                 end,
+                                rows,
                                 cols,
                                 threshold,
                                 &mut path,
+                                visited,
                                 result,
                                 data);
                 }
+                /*let neighbor_accum = data[*neighbor_id as usize].borrow_mut().to_owned().accum;
+                if (*neighbor_id != end) && (path.len() > 2) {
+                    //recursion in here
+                    if (neighbor_accum < threshold) && (!path.contains(neighbor_id)) {
+                        dfs_modified(*neighbor_id,
+                                    end,
+                                    rows,
+                                    cols,
+                                    threshold,
+                                    &mut path,
+                                    result,
+                                    data);
+                    }
+                } else {
+                    //recursion in here (if the neighbor is the end or if the path consists of the neighbor and end)
+                    //the only difference is we're not checking if neighbor is a drainage cell and we're not checking
+                    //if the cell is already the end
+                    if !path.contains(neighbor_id) {
+                        dfs_modified(*neighbor_id,
+                                    end,
+                                    rows,
+                                    cols,
+                                    threshold,
+                                    &mut path,
+                                    result,
+                                    data);
+                    }
+                }*/
+            } else {
+                warn!("ID: {neighbor_id} -> ({row},{col}) is out of bounds.");
             }
         }
     }
@@ -231,15 +262,22 @@ fn dfs_modified(
 fn find_all_paths(
     start:u32,
     end:u32,
+    rows:u32,
     cols:u32,
     threshold:f64,
-    data: &Vec<RefCell<Node>>) -> Vec<Vec<u32>> {
+    data: &Vec<RefCell<Node>>,
+    results: Arc<Mutex<Vec<Vec<Vec<u32>>>>>,
+    pb: Arc<Mutex<ProgressBar>>) {
     
     let mut result: Vec<Vec<u32>> = Vec::with_capacity(100);
     let mut path: Vec<u32> = Vec::with_capacity(100);
-    dfs_modified(start, end, cols, threshold, &mut path, &mut result, data);
+    let mut visited: Vec<u32> = Vec::with_capacity(100);
+    dfs_modified(start, end, rows,cols, threshold, &mut path, &mut visited,&mut result, data);
     
-    return result;
+    pb.lock().unwrap().inc(1);
+
+    let mut guard = results.lock().unwrap();
+    guard[start as usize].extend(result);
 }
 
 /// This function returns the id of the chosen drainage cell passing through the different
@@ -247,8 +285,11 @@ fn find_all_paths(
 /// 
 /// Alpha controls the *path length bias* over the *accumulation bias* on the basis that
 /// the shorter the path the better the candidate and the higher average accumulation the better
-fn select_paths(paths:&Vec<Vec<u32>>,data:&Vec<Vec<Node>> ,alpha:f64) ->u32 {
-    
+fn select_paths(paths:&Vec<Vec<u32>>,data:&Vec<Vec<Node>>) ->u32 {
+    let mut paths = paths.clone();
+    paths.sort_by(|val_a,val_b| {
+        val_a.len().cmp(&val_b.len())
+    });
 
 
     //placeholder
@@ -256,7 +297,9 @@ fn select_paths(paths:&Vec<Vec<u32>>,data:&Vec<Vec<Node>> ,alpha:f64) ->u32 {
 }
 
 fn main() {
-    let file = File::open("./accumulations/cells_mini.json").expect("Failed to open file");
+    env_logger::init();
+
+    let file = File::open("./accumulations/cells_mid.json").expect("Failed to open file");
 
     println!("Loading graph data... (This may take a while)");
     let start = Instant::now();
@@ -274,8 +317,8 @@ fn main() {
     println!("Elapsed time: {:.2?}",elapsed);
 
 
-    let rows: u32 = 5;//1047;
-    let cols: u32 = 6;//1613;
+    let rows: u32 = 100;//5;//1047;
+    let cols: u32 = 100;//6;//1613;
     let data_len = (rows * cols) as usize;
 
     let mut hand: Array2<f64> = Array2::from_elem((rows as usize,cols as usize),-1.0);
@@ -286,14 +329,14 @@ fn main() {
             )
             .unwrap()
             .progress_chars("##-");
-    pb.set_style(sty);
+    pb.set_style(sty.clone());
 
     let max_drainage:usize = 5;
     let mut closest_drainage:Vec<Drainage> = Vec::with_capacity(data_len);
 
     let start = Instant::now();
     //let mut num_processed:u128 = 0;
-    let drainage_threshold:f64 = 5.0;
+    let drainage_threshold:f64 = 1000.0;//5.0;
     for r in 0..rows {
         for c in 0..cols {
             
@@ -337,15 +380,129 @@ fn main() {
                     .map(|drainage| RefCell::new(drainage))
                     .collect();
 
+
+    
+    //store the paths per node to its connected drainage cells
+    let mut paths_to_drainage: Arc<Mutex<Vec<Vec<Vec<u32>>>>> = Arc::new(Mutex::new(vec![Vec::new();data_len]));
+
+
+    //arc mutex progress bar
+    let num_closest:Vec<u64> = closest_drainage
+                                .iter()
+                                .cloned()
+                                .map(|drain|{
+                                    drain.closest.len() as u64
+                                })
+                                .collect();
+    let num_tasks:u64 = num_closest.iter().sum();
+
+    let pb = ProgressBar::new(num_tasks);
+    let sty = ProgressStyle::with_template(
+                "[{elapsed_precise}] {bar:100.cyan/blue} {pos:>7}/{len:7} {msg}",
+            )
+            .unwrap()
+            .progress_chars("##-");
+    pb.set_style(sty.clone());
+    let pb:Arc<Mutex<ProgressBar>> = Arc::new(Mutex::new(pb));
+    
+    let mut num_proccessed = 0;
+    let collect_every = 1000;
+    let max_paths:usize = 5;
+    let mut handles = Vec::new();
+    for start_node in 0..data_len {
+        let start_node_accum = data[start_node].borrow().accum;
+        if start_node_accum < drainage_threshold {
+            let start_node_accum = data[start_node].borrow().accum;
+            let end_nodes = closest_drainage[start_node].borrow_mut().clone().closest;
+            if end_nodes.len() > 0 {
+                for end_node in end_nodes {
+                    let mut clone_data: Vec<RefCell<Node>> = Vec::new();
+                    data.clone_into(&mut clone_data);
+                    let clone_paths_to_drainage = Arc::clone(&paths_to_drainage);
+                    let clone_pb = Arc::clone(&pb);
+                    let handle = thread::spawn(move|| {
+                        find_all_paths(start_node as u32,
+                             end_node,
+                             rows,
+                             cols,
+                             drainage_threshold,
+                             &clone_data,
+                             clone_paths_to_drainage,
+                             clone_pb);
+                    });
+                    handles.push(handle);
+
+                    if num_proccessed % collect_every == 0 {
+                        for _ in 0..handles.len() {
+                            handles.pop().unwrap().join().unwrap();
+                        }
+                    }
+
+                    num_proccessed += 1
+                }
+            }
+        }
+    }
+    
+    //pop remaining handles
+    for _ in 0..handles.len() {
+        handles.pop().unwrap().join().unwrap();
+    }
+
+    let final_paths = paths_to_drainage.lock().unwrap().clone();
+    for i in 0..data_len {
+        println!{"{i},{:?}", final_paths[i]};
+    }
+
+    /* 
     //try searching possible paths
-    let start_node:u32 = 5;
+    println!("Searching paths to drainage cell...");
+    let max_paths:usize = 5;
+    for start_node in 0..data_len {
+        //check if the start_node is a drainage cell
+        let start_node_accum = data[start_node].borrow().accum;
+        if start_node_accum < drainage_threshold {
+
+            let mut path_to_ends: Vec<Vec<u32>> = Vec::with_capacity(100);
+            let end_nodes = closest_drainage[start_node].borrow_mut().clone().closest;
+            //check if the start_node leads to any drainage cell
+            if end_nodes.len() > 0 {
+                for end_node in end_nodes {
+                    let mut all_paths = find_all_paths(start_node as u32, end_node, rows,cols, drainage_threshold, &data);
+                    all_paths.sort_by(|path_a,path_b|{
+                        path_a.len().cmp(&path_b.len())
+                    });
+                    //get the top shortest paths determined by max_paths
+                    let all_paths = all_paths[0..all_paths.len().min(max_paths)].to_vec();
+
+                    //add all paths to a vector containing paths to all connected drainage
+                    for path in all_paths {
+                        path_to_ends.push(path);
+                    }
+                }
+            }
+
+            paths_to_drainage.push(path_to_ends);
+        } else {
+            paths_to_drainage.push(vec![]);
+        }
+        pb.inc(1);
+    }
+    pb.finish();
+
+    //for node in 0..data_len {
+    //    println!("{} - {:?}",node,paths_to_drainage[node]);
+    //}*/
+
+
+    /*let start_node:u32 = 5;
     let end_node = closest_drainage_rfc[start_node as usize].borrow_mut().closest[2];
     let all_paths = find_all_paths(start_node, end_node, cols, drainage_threshold, &data);
     println!("\nGetting all possible paths for:");
     println!("Start: {start_node}, End: {end_node}");
     for (i,path) in all_paths.iter().enumerate(){
         println!("{}. {:?}",i+1,*path);
-    }
+    }*/
 
 
 
