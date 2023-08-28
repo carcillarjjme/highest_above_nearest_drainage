@@ -6,21 +6,21 @@ use std::borrow::BorrowMut;
 //use std::borrow::BorrowMut;
 use std::{fs::File, io::Write};
 //use std::io::Read;
-use std::collections::VecDeque;
+use std::collections::{VecDeque,HashMap};
 //use std::process::id;
 use serde::{Deserialize, Serialize};
 //use serde_json::value::Index;
 use std::cell::RefCell;
 use ndarray::Array2;
-use ndarray_npy::{ReadNpyError, ReadNpyExt, WriteNpyExt};
+use ndarray_npy::WriteNpyExt;
 //use std::env;
 use std::io::BufWriter;
 use std::time::Instant;
 use indexmap::IndexMap;
 use indicatif::{ProgressBar,ProgressStyle};
-use std::{num, path};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::io;
 
 /// A struct representing the node data
 /// * 'row' - the row index of the node
@@ -28,7 +28,6 @@ use std::thread;
 /// * 'accum' - the total accumulation value of the node
 /// * 'elev' - the elevation of the node
 /// * 'neighbors' - a vector containing the row and column indices of the node neighbor/children
-/// * 'parents' - a vector containing the row and column indices of the node parents
 /// * 'is_explored' - a flag used when traversing nodes
 #[derive(Serialize, Deserialize, Debug,Clone)]
 struct Node {
@@ -37,7 +36,6 @@ struct Node {
     accum: f64,
     elev:f64,
     neighbors:Vec<Vec<u32>>,
-    parents:Vec<Vec<u32>>,
 
     #[serde(default)]
     is_explored:bool,
@@ -189,8 +187,6 @@ fn dfs_modified(
         result.push(path.clone());
     } else {
         let neighbor_locs = data[node_id as usize].borrow_mut().to_owned().neighbors;
-        //let parent_ids = data[node_id as usize].borrow_mut().to_owned().parents;
-        //let parent_ids:Vec<u32> = parent_ids.iter().map(|loc| id_hash(loc[0], loc[1], cols)).collect();
 
         for loc in neighbor_locs.iter() {
             let row = loc[0];
@@ -297,21 +293,97 @@ fn find_all_paths(
 /// 
 /// Alpha controls the *path length bias* over the *accumulation bias* on the basis that
 /// the shorter the path the better the candidate and the higher average accumulation the better
-fn select_paths(paths:&Vec<Vec<u32>>,data:&Vec<Vec<Node>>) ->u32 {
-    let mut paths = paths.clone();
-    paths.sort_by(|val_a,val_b| {
-        val_a.len().cmp(&val_b.len())
-    });
+fn select_paths(paths:&Vec<Vec<u32>>,data:&Vec<RefCell<Node>>,alpha:f64) ->u32 {
+    if paths.len() == 0 {
+        panic!("Tries to select path from an empty path list.");
+    }
+    
+    let paths = paths.clone();
 
+    let mut average_accums: HashMap<usize,f64> = HashMap::new();
+    for (index,path) in paths.iter().enumerate() {
+        let mut sum:f64 = 0.0;
+        for node_id in path {
+            let accum = data[*node_id as usize].borrow().to_owned().accum;
+            sum += accum;
+        }
+        average_accums.insert(index, sum/(path.len() as f64));
+    }
 
-    //placeholder
-    0
+    
+    let path_lengths:HashMap<usize,f64> = paths
+                    .iter().enumerate()
+                    .map(|(index,path)|{
+                        (index,path.len() as f64)
+                    })
+                    .collect();
+
+    /*let average_accums:HashMap<usize,f64> = paths
+                        .iter().enumerate()
+                        .map(|(index,path)|{
+                            let mut sum = 0.0;
+                            for node_id in path {
+                                let accum = data[*node_id as usize].to_owned().borrow_mut().accum;
+                                sum += accum;
+                            }
+                            (index,sum/path.len() as f64)
+                        })
+                        .collect();*/
+    
+    // get the score based on the alpha bias
+    let mut scores:Vec<f64> = Vec::with_capacity(paths.len());
+    for i in 0..paths.len(){
+        let path_lengths_sum:f64 = path_lengths.values().sum();
+        let current_path_length = path_lengths.get(&i).unwrap();
+        let ave_accum_sum:f64 = average_accums.values().sum();
+        let current_ave_accum = average_accums.get(&i).unwrap();
+
+        let path_score:f64 = 1.0 - (current_path_length/path_lengths_sum);
+        let accum_score:f64 = current_ave_accum/ave_accum_sum;
+        let score = alpha * path_score + (1.0 - alpha) * accum_score;
+        scores.push(score);
+    }
+
+    
+    //get maximum score
+    let max_score = scores.iter().fold(f64::NEG_INFINITY, |max, &x| max.max(x));
+
+    //filter paths with score equal to the max_score
+    let mut filtered_paths:Vec<Vec<u32>> = paths
+                        .iter()
+                        .enumerate()
+                        .filter(|(index,_)|{
+                            scores[*index] == max_score
+                        })
+                        .map(|(_,path)| {
+                            path.clone()
+                        })
+                        .collect();
+
+    //no ties, return index of drainage cell            
+    if filtered_paths.len() == 1 {
+        return *filtered_paths[0].last().unwrap();
+    } else {
+
+        //resolve ties by choosing drainage with higher elevation for a conservative hand value
+        filtered_paths.sort_by(|path1,path2|{
+            let drainage1 = path1.last().unwrap();
+            let drainage2 = path2.last().unwrap();
+            
+            //sort in descending order of elevation
+            drainage2.cmp(&drainage1)
+        });
+
+        return *filtered_paths[0].last().unwrap();
+    }
 }
+
+
 
 fn main() {
     env_logger::init();
 
-    let file = File::open("./accumulations/cells_mid.json").expect("Failed to open file");
+    let file = File::open("./accumulations/cells.json").expect("Failed to open file");
 
     println!("Loading graph data... (This may take a while)");
     let start = Instant::now();
@@ -329,11 +401,9 @@ fn main() {
     println!("Elapsed time: {:.2?}",elapsed);
 
 
-    let rows: u32 = 100;//5;//1047;
-    let cols: u32 = 100;//6;//1613;
+    let rows: u32 = 1047;//100;//5;
+    let cols: u32 = 1613;//100;//6;
     let data_len = (rows * cols) as usize;
-
-    let mut hand: Array2<f64> = Array2::from_elem((rows as usize,cols as usize),-1.0);
 
     let pb = ProgressBar::new((rows * cols) as u64);
     let sty = ProgressStyle::with_template(
@@ -343,6 +413,7 @@ fn main() {
             .progress_chars("##-");
     pb.set_style(sty.clone());
 
+    //number of closest drainage to consider
     let max_drainage:usize = 5;
     let mut closest_drainage:Vec<Drainage> = Vec::with_capacity(data_len);
 
@@ -354,12 +425,12 @@ fn main() {
             
             let start_index = id_hash(r,c,cols);
             let mut drainage_ids = search_drainage(start_index, &mut data,drainage_threshold,cols);
-            let distance_from_cell:Vec<u32> = drainage_ids
+            /*let distance_from_cell:Vec<u32> = drainage_ids
                                                 .iter()
                                                 .map(|this_id|{
                                                     manhattan(*this_id, start_index, cols)
                                                 })
-                                                .collect();
+                                                .collect();*/
             drainage_ids.sort_by(|val_a,val_b| {
                 let dist_a = manhattan(*val_a,start_index, cols);
                 let dist_b  = manhattan(*val_b,start_index, cols);
@@ -373,9 +444,6 @@ fn main() {
             let drainage = Drainage{node_id: start_index,closest:drainage_ids[0..num_to_store].to_vec()};
             closest_drainage.push(drainage);
 
-            hand[[r as usize, c as usize]] = drainage_len as f64;
-            
-
             //num_processed += 1;
             pb.inc(1);
         }
@@ -384,18 +452,18 @@ fn main() {
     pb.finish();
     let elapsed = start.elapsed();
     println!("Connected river cells identified.");
-    println!("Elapsed time: {:.2?}",elapsed);
+    println!("Elapsed time: {:.2?}\n",elapsed);
 
-    let closest_drainage_rfc: Vec<RefCell<Drainage>> = closest_drainage
+    /*let closest_drainage_rfc: Vec<RefCell<Drainage>> = closest_drainage
                     .iter()
                     .cloned()
                     .map(|drainage| RefCell::new(drainage))
-                    .collect();
+                    .collect();*/
 
 
     
     //store the paths per node to its connected drainage cells
-    let mut paths_to_drainage: Arc<Mutex<Vec<Vec<Vec<u32>>>>> = Arc::new(Mutex::new(vec![Vec::new();data_len]));
+    let paths_to_drainage: Arc<Mutex<Vec<Vec<Vec<u32>>>>> = Arc::new(Mutex::new(vec![Vec::new();data_len]));
 
 
     //arc mutex progress bar
@@ -419,13 +487,13 @@ fn main() {
     
     let mut num_proccessed = 0;
     let collect_every = 1000;
-    let max_paths:usize = 5;
+    //let max_paths:usize = 5;
     let max_path_length:usize = 10;
     let mut handles = Vec::new();
     for start_node in 0..data_len {
         let start_node_accum = data[start_node].borrow().accum;
         if start_node_accum < drainage_threshold {
-            let start_node_accum = data[start_node].borrow().accum;
+            //let start_node_accum = data[start_node].borrow().accum;
             let end_nodes = closest_drainage[start_node].borrow_mut().clone().closest;
             if end_nodes.len() > 0 {
                 for end_node in end_nodes {
@@ -463,9 +531,34 @@ fn main() {
         handles.pop().unwrap().join().unwrap();
     }
 
+
+    //create HAND array
+    //represent drainage cells as -1
+    //represent no drainage path as -2
+    let mut hand: Array2<f64> = Array2::from_elem((rows as usize,cols as usize),-1.0);
     let final_paths = paths_to_drainage.lock().unwrap().clone();
-    for i in 0..data_len {
-        println!{"{i},{:?}", final_paths[i]};
+    for (node_id,paths) in final_paths.iter().enumerate() {
+        
+        let node = data[node_id].borrow_mut().to_owned();
+        let row = node.row;
+        let col = node.col;
+
+        if paths.len() == 0 {
+            hand[[row as usize, col as usize]] = -2.0;
+            println!("{node_id} - Closest Drainage: None");
+        } else {
+            let closest_drainage:u32 = select_paths(paths, &data, 0.9);
+            let elev = node.elev;
+            let drain_elev = data[closest_drainage as usize].borrow_mut().to_owned().elev;
+            let mut hand_value = elev - drain_elev;
+            if hand_value < 0.0 {
+                hand_value = 0.0
+            }
+
+            hand[[row as usize, col as usize]] = hand_value;
+
+            println!("{node_id} - Closest Drainage: {closest_drainage}, HAND: {hand_value}");
+        }
     }
 
     /* 
@@ -534,4 +627,8 @@ fn main() {
     };
 
 
+    println!("Enter any to exit.");
+    let mut _input = String::new();
+    io::stdin().read_line(&mut _input).expect("Failed to read line.");
+    print!("Program exited.");
 }
