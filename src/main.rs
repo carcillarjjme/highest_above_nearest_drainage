@@ -1,7 +1,6 @@
 #![recursion_limit = "256"]
 #[macro_use]
 extern crate log;
-
 use std::borrow::BorrowMut;
 //use std::borrow::BorrowMut;
 use std::{fs::File, io::Write};
@@ -175,7 +174,7 @@ fn dfs_modified(
     path:&mut Vec<u32>,
     visited:&mut Vec<u32>,
     result:&mut Vec<Vec<u32>>,
-    data: &Vec<RefCell<Node>>) {
+    data: &Arc<Vec<Node>>) {
     
     visited.push(node_id.clone());
     let data_len = rows * cols;
@@ -186,7 +185,7 @@ fn dfs_modified(
     if node_id == end {
         result.push(path.clone());
     } else {
-        let neighbor_locs = data[node_id as usize].borrow_mut().to_owned().neighbors;
+        let neighbor_locs = data[node_id as usize].to_owned().neighbors;
 
         for loc in neighbor_locs.iter() {
             let row = loc[0];
@@ -264,7 +263,7 @@ fn find_all_paths(
     cols:u32,
     threshold:f64,
     max_path_length:usize,
-    data: &Vec<RefCell<Node>>,
+    data: &Arc<Vec<Node>>,
     results: Arc<Mutex<Vec<Vec<Vec<u32>>>>>,
     pb: Arc<Mutex<ProgressBar>>) {
     
@@ -383,7 +382,7 @@ fn select_paths(paths:&Vec<Vec<u32>>,data:&Vec<RefCell<Node>>,alpha:f64) ->u32 {
 fn main() {
     env_logger::init();
 
-    let file = File::open("./accumulations/cells.json").expect("Failed to open file");
+    let file = File::open("./accumulations/cells_mid.json").expect("Failed to open file");
 
     println!("Loading graph data... (This may take a while)");
     let start = Instant::now();
@@ -401,8 +400,8 @@ fn main() {
     println!("Elapsed time: {:.2?}",elapsed);
 
 
-    let rows: u32 = 1047;//100;//5;
-    let cols: u32 = 1613;//100;//6;
+    let rows: u32 = 100;//1047;//5;
+    let cols: u32 = 100;//1613;//6;
     let data_len = (rows * cols) as usize;
 
     let pb = ProgressBar::new((rows * cols) as u64);
@@ -485,6 +484,10 @@ fn main() {
     pb.set_style(sty.clone());
     let pb:Arc<Mutex<ProgressBar>> = Arc::new(Mutex::new(pb));
     
+    
+    let arc_data: Arc<Vec<Node>> = Arc::new(vec_data);
+
+
     let mut num_proccessed = 0;
     let collect_every = 1000;
     //let max_paths:usize = 5;
@@ -497,8 +500,8 @@ fn main() {
             let end_nodes = closest_drainage[start_node].borrow_mut().clone().closest;
             if end_nodes.len() > 0 {
                 for end_node in end_nodes {
-                    let mut clone_data: Vec<RefCell<Node>> = Vec::new();
-                    data.clone_into(&mut clone_data);
+                    let mut clone_data = Arc::clone(&arc_data);
+                    //data.clone_into(&mut clone_data);
                     let clone_paths_to_drainage = Arc::clone(&paths_to_drainage);
                     let clone_pb = Arc::clone(&pb);
                     let handle = thread::spawn(move|| {
@@ -526,6 +529,9 @@ fn main() {
         }
     }
     
+    //finish progress bar
+    pb.lock().unwrap().finish();
+
     //pop remaining handles
     for _ in 0..handles.len() {
         handles.pop().unwrap().join().unwrap();
