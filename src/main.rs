@@ -173,6 +173,7 @@ fn dfs_modified(
     rows:u32,
     cols:u32,
     threshold: f64,
+    max_path_length:usize,
     path:&mut Vec<u32>,
     visited:&mut Vec<u32>,
     result:&mut Vec<Vec<u32>>,
@@ -197,13 +198,14 @@ fn dfs_modified(
             let neighbor_id = &id_hash(row, col, cols);
             //println!("{neighbor_id}");
             //check if the neighbor is within bounds
-            if (neighbor_id < &data_len) && !visited.contains(neighbor_id) {
+            if (neighbor_id < &data_len) && !visited.contains(neighbor_id) && (path.len() <= max_path_length) {
                 if !path.contains(neighbor_id) {
                     dfs_modified(*neighbor_id,
                                 end,
                                 rows,
                                 cols,
                                 threshold,
+                                max_path_length,
                                 &mut path,
                                 visited,
                                 result,
@@ -265,6 +267,7 @@ fn find_all_paths(
     rows:u32,
     cols:u32,
     threshold:f64,
+    max_path_length:usize,
     data: &Vec<RefCell<Node>>,
     results: Arc<Mutex<Vec<Vec<Vec<u32>>>>>,
     pb: Arc<Mutex<ProgressBar>>) {
@@ -272,7 +275,16 @@ fn find_all_paths(
     let mut result: Vec<Vec<u32>> = Vec::with_capacity(100);
     let mut path: Vec<u32> = Vec::with_capacity(100);
     let mut visited: Vec<u32> = Vec::with_capacity(100);
-    dfs_modified(start, end, rows,cols, threshold, &mut path, &mut visited,&mut result, data);
+    dfs_modified(start,
+         end,
+         rows,
+         cols,
+         threshold,
+         max_path_length,
+         &mut path,
+         &mut visited,
+         &mut result,
+         data);
     
     pb.lock().unwrap().inc(1);
 
@@ -408,6 +420,7 @@ fn main() {
     let mut num_proccessed = 0;
     let collect_every = 1000;
     let max_paths:usize = 5;
+    let max_path_length:usize = 10;
     let mut handles = Vec::new();
     for start_node in 0..data_len {
         let start_node_accum = data[start_node].borrow().accum;
@@ -426,6 +439,7 @@ fn main() {
                              rows,
                              cols,
                              drainage_threshold,
+                             max_path_length,
                              &clone_data,
                              clone_paths_to_drainage,
                              clone_pb);
