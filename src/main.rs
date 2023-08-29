@@ -4,8 +4,8 @@ extern crate log;
 use std::borrow::BorrowMut;
 //use std::borrow::BorrowMut;
 use std::{fs::File, io::Write};
-//use std::io::Read;
-use std::collections::{VecDeque,HashMap};
+use std::io::{Read, BufReader};
+use std::collections::{VecDeque,HashMap,HashSet};
 //use std::process::id;
 use serde::{Deserialize, Serialize};
 //use serde_json::value::Index;
@@ -92,62 +92,101 @@ fn manhattan(id_a:u32,id_b:u32,cols:u32) -> u32{
 /// * 'data' - a reference to the network data comprised of all nodes in the digital elevation model
 /// * 'threshold' - the value that discriminates a drainage node from non-drainage node
 /// * 'cols' - the numner of columns in the digital elevation model
-fn search_drainage(start_index:u32,data:&mut Vec<RefCell<Node>>,threshold:f64,rows:u32,cols:u32) ->Vec<u32> {
-    // TODO: Make this multithreaded
+
+fn search_drainage(start_index:u32,
+                    data:&Arc<Vec<Node>>,
+                    closest_drainage:&Arc<Mutex<Vec<Drainage>>>,
+                    threshold:f64,
+                    rows:u32,
+                    cols:u32,
+                    max_drainage:usize,
+                    pb:Arc<Mutex<ProgressBar>>) {
     let data_len = rows * cols;
-    let mut explored:Vec<u32> = Vec::with_capacity(2000);
+    //let mut explored:Vec<u32> = Vec::with_capacity(2000);
+    //accessing directly from Node.is_explored is faster try to mitigate with multithreading
+    let mut explored:HashSet<u32> = HashSet::new(); 
+
+
     let mut stack:VecDeque<u32> = VecDeque::with_capacity(1000);
-    let mut drainage:Vec<u32> = Vec::with_capacity(1000);
-    explored.push(start_index);
+    let mut drainage_ids:Vec<u32> = Vec::with_capacity(1000);
+    //explored.push(start_index);
+    explored.insert(start_index);
+    
     stack.push_back(start_index);
-    data[start_index as usize].borrow_mut().is_explored = true;
+    //data[start_index as usize].borrow_mut().is_explored = true;
 
     //if the starting cell is a river, return nothing
-    let start_accum = data[start_index as usize].borrow().accum;
+    let start_accum = data[start_index as usize].accum;
     if start_accum >= threshold {
-        return drainage;
-    }
+        //write empty drainage struct
+        
+        let drainage = Drainage{node_id: start_index,closest:drainage_ids};
+        let mut drainage_guard = closest_drainage.lock().unwrap();
+        drainage_guard[start_index as usize] = drainage;
+    } else {
+        while stack.len() > 0 {
+            let node_index = stack.pop_front().unwrap();
+            let neighbor_locs = data[node_index as usize].to_owned().neighbors;
+            for loc in neighbor_locs.iter(){
+                let row = loc[0];
+                let col = loc[1];
 
-    while stack.len() > 0 {
-        let node_index = stack.pop_front().unwrap();
-        let neighbor_locs = data[node_index as usize].borrow_mut().to_owned().neighbors;
-        for loc in neighbor_locs.iter(){
-            let row = loc[0];
-            let col = loc[1];
+                let neighbor_id = id_hash(row, col, cols);
 
-            let neighbor_id = id_hash(row, col, cols);
-
-            //if the index is within the data set
-            //if let Some(element)  = data.get(neighbor_id as usize){
-                
-                //let neighbor_is_explored =  element.borrow().is_explored;
-                //let neighbor_accum = element.borrow().accum;
-
-                if (!explored.contains(&neighbor_id)) && (neighbor_id < data_len) {
-                    let neighbor_accum = data[neighbor_id as usize].borrow().accum;
-                    if neighbor_accum >= threshold {
-                        drainage.push(neighbor_id);
-                    } else {
-                        stack.push_back(neighbor_id);
+                //if the index is within the data set
+                //if let Some(element)  = data.get(neighbor_id as usize){
+                    
+                    //let neighbor_is_explored =  element.borrow().is_explored;
+                    
+                    
+                    if !explored.contains(&neighbor_id) && (neighbor_id < data_len) {
+                    //if !neighbor_is_explored {
+                        let neighbor_accum = data[neighbor_id as usize].accum;
+                        if neighbor_accum >= threshold {
+                            drainage_ids.push(neighbor_id);
+                        } else {
+                            stack.push_back(neighbor_id);
+                        }
+                        
+                        //element.borrow_mut().is_explored = true;
+                        //explored.push(neighbor_id);
+                        explored.insert(neighbor_id);
                     }
                     
-                    data[node_index as usize].borrow_mut().is_explored = true;
-                    explored.push(neighbor_id);
-                }
-                
-            //}
+                //}
 
+            }
         }
+
+        drainage_ids.sort_by(|val_a,val_b| {
+                    let dist_a = manhattan(*val_a,start_index, cols);
+                    let dist_b  = manhattan(*val_b,start_index, cols);
+                    //least to greatest
+                    dist_a.cmp(&dist_b)
+                });
+                
+
+
+        let drainage_len = drainage_ids.len();
+        let num_to_store:usize = drainage_len.min(max_drainage);
+        let drainage = Drainage{node_id: start_index,closest:drainage_ids[0..num_to_store].to_vec()};
+        let mut drainage_guard = closest_drainage.lock().unwrap();
+        drainage_guard[start_index as usize] = drainage;
     }
 
-    //reset explored nodes
+
+
+
+    /*//reset explored nodes
     for explored_index in explored.iter() {
         if let Some(element)  = data.get(explored_index.to_owned() as usize){
             element.borrow_mut().is_explored = false;
         }
-    }
+    }*/
 
-    return drainage;
+
+    pb.lock().unwrap().inc(1);
+    //return drainage;
 
 }
 
@@ -384,85 +423,122 @@ fn select_paths(paths:&Vec<Vec<u32>>,data:&Vec<RefCell<Node>>,alpha:f64) ->u32 {
 fn main() {
     env_logger::init();
 
-    let file = File::open("./accumulations/cells_mid.json").expect("Failed to open file");
+    let network_file_path = "./accumulations/cells.json";
+    let rows: u32 = 1047;//5;
+    let cols: u32 = 1613;//6;
+    let data_len = (rows * cols) as usize;
 
-    println!("Loading graph data... (This may take a while)");
+
+    //number of closest drainage to consider
+    let max_drainage:usize = 5;
+
+    //terminate dfs for path searching when current length is over this
+    let max_path_length:usize = 10;
+
+    //path length bias over average accumulation per path range is 0 to 1
+    let alpha = 0.9;
+
+
+
+
+    
+    println!("Loading network data.");
     let start = Instant::now();
-    let deserialized: IndexMap<u32,Node> = serde_json::from_reader(file).expect("Failed to deserialize JSON file.");
+    let file = File::open(&network_file_path).unwrap();
+    let reader = BufReader::new(file);
+    let deserialized: IndexMap<u32,Node> = serde_json::from_reader(reader).unwrap();
+
+
+    //let deserialized: IndexMap<u32,Node> = serde_json::from_reader(file).expect("Failed to deserialize JSON file.");
     let vec_data:Vec<Node> = deserialized.values().cloned().collect();
-    let mut data: Vec<RefCell<Node>> = vec_data
+    let data: Vec<RefCell<Node>> = vec_data
                 .iter()
                 .cloned()
                 .map(|item|RefCell::new(item))
                 .collect();
     
+    let arc_data: Arc<Vec<Node>> = Arc::new(vec_data);
+
 
     let elapsed = start.elapsed();
-    println!("JSON data successfuly serialized. Calculating HAND values ...");
+    println!("JSON data successfuly serialized. Searching for closest drainage...");
     println!("Elapsed time: {:.2?}",elapsed);
 
 
-    let rows: u32 = 100;//1047;//5;
-    let cols: u32 = 100;//1613;//6;
-    let data_len = (rows * cols) as usize;
-
-    let pb = ProgressBar::new((rows * cols) as u64);
+    //create progress bar
+    let pb = ProgressBar::new(data_len as u64);
     let sty = ProgressStyle::with_template(
                 "[{elapsed_precise}] {bar:100.cyan/blue} {pos:>7}/{len:7} {msg}",
             )
             .unwrap()
             .progress_chars("##-");
     pb.set_style(sty.clone());
+    let pb:Arc<Mutex<ProgressBar>> = Arc::new(Mutex::new(pb));
 
-    //number of closest drainage to consider
-    let max_drainage:usize = 5;
+
+    
     let mut closest_drainage:Vec<Drainage> = Vec::with_capacity(data_len);
+    for i in 0..data_len {
+        let empty_drainage = Drainage{node_id: i as u32, closest: Vec::new()};
+        closest_drainage.push(empty_drainage);
+    }
+    let closest_drainage:Arc<Mutex<Vec<Drainage>>> = Arc::new(Mutex::new(closest_drainage));
+
 
     let start = Instant::now();
-    //let mut num_processed:u128 = 0;
+    let mut num_proccessed = 0;
+    let collect_every = 1000;
+    let mut handles = Vec::new();
     let drainage_threshold:f64 = 1000.0;//5.0;
     for r in 0..rows {
         for c in 0..cols {
-            
+            let clone_pb = Arc::clone(&pb);
+            let clone_data = Arc::clone(&arc_data);
+            let clone_closest_drainage = Arc::clone(&closest_drainage);
+
             let start_index = id_hash(r,c,cols);
-            let mut drainage_ids = search_drainage(start_index, &mut data,drainage_threshold,rows,cols);
-            /*let distance_from_cell:Vec<u32> = drainage_ids
-                                                .iter()
-                                                .map(|this_id|{
-                                                    manhattan(*this_id, start_index, cols)
-                                                })
-                                                .collect();*/
-            drainage_ids.sort_by(|val_a,val_b| {
-                let dist_a = manhattan(*val_a,start_index, cols);
-                let dist_b  = manhattan(*val_b,start_index, cols);
-                //least to greatest
-                dist_a.cmp(&dist_b)
-            });
+            let handle = thread::spawn( move || {
+                        search_drainage(start_index,
+                                &clone_data,
+                                &clone_closest_drainage,
+                                drainage_threshold,
+                                rows,
+                                cols,
+                                max_drainage,
+                                clone_pb);
+                        });
+            handles.push(handle);
             
-            let drainage_len = drainage_ids.len();
-            let num_to_store:usize = drainage_len.min(max_drainage);
+            //pop handles at the set interval
+            if num_proccessed % collect_every == 0 {
+                for _ in 0..handles.len() {
+                    handles.pop().unwrap().join().unwrap();
+                }
+            }
 
-            let drainage = Drainage{node_id: start_index,closest:drainage_ids[0..num_to_store].to_vec()};
-            closest_drainage.push(drainage);
-
-            //num_processed += 1;
-            pb.inc(1);
+            num_proccessed += 1;
         }
     }
-    
-    pb.finish();
+
+
+    //pop remaining handles
+    for _ in 0..handles.len() {
+        handles.pop().unwrap().join().unwrap();
+    }
+
+
+    pb.lock().unwrap().finish();
     let elapsed = start.elapsed();
-    println!("Connected river cells identified.");
+    println!("Nearby drainage nodes identified. Finding all paths to each drainage node...");
     println!("Elapsed time: {:.2?}\n",elapsed);
 
-    /*let closest_drainage_rfc: Vec<RefCell<Drainage>> = closest_drainage
-                    .iter()
-                    .cloned()
-                    .map(|drainage| RefCell::new(drainage))
-                    .collect();*/
+
+    //extract data out from Arc<Mutex<Vec<Drainage>>>
+    let mut closest_drainage = closest_drainage.lock().unwrap().clone();
 
 
-    
+
+
     //store the paths per node to its connected drainage cells
     let paths_to_drainage: Arc<Mutex<Vec<Vec<Vec<u32>>>>> = Arc::new(Mutex::new(vec![Vec::new();data_len]));
 
@@ -475,7 +551,18 @@ fn main() {
                                     drain.closest.len() as u64
                                 })
                                 .collect();
-    let num_tasks:u64 = num_closest.iter().sum();
+    let num_closest_zeros:Vec<u64> = num_closest
+                                .iter()
+                                .cloned()
+                                .filter(|num|{
+                                    *num == 0
+                                })
+                                .collect();
+    let non_empty_tasks:u64 = num_closest.iter().sum();
+    let empty_tasks: u64 = num_closest_zeros.len() as u64;
+    let num_tasks:u64 = non_empty_tasks + empty_tasks;
+    //TODO: Review correct number for num tasks
+
 
     let pb = ProgressBar::new(num_tasks);
     let sty = ProgressStyle::with_template(
@@ -487,13 +574,13 @@ fn main() {
     let pb:Arc<Mutex<ProgressBar>> = Arc::new(Mutex::new(pb));
     
     
-    let arc_data: Arc<Vec<Node>> = Arc::new(vec_data);
+    
 
 
     let mut num_proccessed = 0;
     let collect_every = 1000;
-    //let max_paths:usize = 5;
-    let max_path_length:usize = 10;
+
+    
     let mut handles = Vec::new();
     for start_node in 0..data_len {
         let start_node_accum = data[start_node].borrow().accum;
@@ -539,7 +626,7 @@ fn main() {
         handles.pop().unwrap().join().unwrap();
     }
 
-
+    
     //create HAND array
     //represent drainage cells as -1
     //represent no drainage path as -2
@@ -555,7 +642,7 @@ fn main() {
             hand[[row as usize, col as usize]] = -2.0;
             //println!("{node_id} - Closest Drainage: None");
         } else {
-            let closest_drainage:u32 = select_paths(paths, &data, 0.9);
+            let closest_drainage:u32 = select_paths(paths, &data, alpha);
             let elev = node.elev;
             let drain_elev = data[closest_drainage as usize].borrow_mut().to_owned().elev;
             let mut hand_value = elev - drain_elev;
@@ -569,55 +656,12 @@ fn main() {
         }
     }
 
-    /* 
-    //try searching possible paths
-    println!("Searching paths to drainage cell...");
-    let max_paths:usize = 5;
-    for start_node in 0..data_len {
-        //check if the start_node is a drainage cell
-        let start_node_accum = data[start_node].borrow().accum;
-        if start_node_accum < drainage_threshold {
-
-            let mut path_to_ends: Vec<Vec<u32>> = Vec::with_capacity(100);
-            let end_nodes = closest_drainage[start_node].borrow_mut().clone().closest;
-            //check if the start_node leads to any drainage cell
-            if end_nodes.len() > 0 {
-                for end_node in end_nodes {
-                    let mut all_paths = find_all_paths(start_node as u32, end_node, rows,cols, drainage_threshold, &data);
-                    all_paths.sort_by(|path_a,path_b|{
-                        path_a.len().cmp(&path_b.len())
-                    });
-                    //get the top shortest paths determined by max_paths
-                    let all_paths = all_paths[0..all_paths.len().min(max_paths)].to_vec();
-
-                    //add all paths to a vector containing paths to all connected drainage
-                    for path in all_paths {
-                        path_to_ends.push(path);
-                    }
-                }
-            }
-
-            paths_to_drainage.push(path_to_ends);
-        } else {
-            paths_to_drainage.push(vec![]);
-        }
-        pb.inc(1);
-    }
-    pb.finish();
-
-    //for node in 0..data_len {
-    //    println!("{} - {:?}",node,paths_to_drainage[node]);
-    //}*/
 
 
-    /*let start_node:u32 = 5;
-    let end_node = closest_drainage_rfc[start_node as usize].borrow_mut().closest[2];
-    let all_paths = find_all_paths(start_node, end_node, cols, drainage_threshold, &data);
-    println!("\nGetting all possible paths for:");
-    println!("Start: {start_node}, End: {end_node}");
-    for (i,path) in all_paths.iter().enumerate(){
-        println!("{}. {:?}",i+1,*path);
-    }*/
+
+
+
+
 
 
 
@@ -635,7 +679,7 @@ fn main() {
     };
 
 
-    println!("Press Enter to exit.");
+    println!("Enter any to exit.");
     let mut _input = String::new();
     io::stdin().read_line(&mut _input).expect("Failed to read line.");
     print!("Program exited.");
