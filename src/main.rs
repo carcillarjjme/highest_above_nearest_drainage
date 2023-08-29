@@ -4,7 +4,7 @@ extern crate log;
 use std::borrow::BorrowMut;
 //use std::borrow::BorrowMut;
 use std::{fs::File, io::Write};
-use std::io::{Read, BufReader};
+use std::io::BufReader;
 use std::collections::{VecDeque,HashMap,HashSet};
 //use std::process::id;
 use serde::{Deserialize, Serialize};
@@ -234,7 +234,7 @@ fn dfs_modified(
             let neighbor_id = &id_hash(row, col, cols);
             //println!("{neighbor_id}");
             //check if the neighbor is within bounds
-            if (neighbor_id < &data_len) && !visited.contains(neighbor_id) && (path.len() <= max_path_length) {
+            if (neighbor_id < &data_len) && !visited.contains(neighbor_id) && (path.len() < max_path_length) {
                 if !path.contains(neighbor_id) {
                     dfs_modified(*neighbor_id,
                                 end,
@@ -358,18 +358,6 @@ fn select_paths(paths:&Vec<Vec<u32>>,data:&Vec<RefCell<Node>>,alpha:f64) ->u32 {
                     })
                     .collect();
 
-    /*let average_accums:HashMap<usize,f64> = paths
-                        .iter().enumerate()
-                        .map(|(index,path)|{
-                            let mut sum = 0.0;
-                            for node_id in path {
-                                let accum = data[*node_id as usize].to_owned().borrow_mut().accum;
-                                sum += accum;
-                            }
-                            (index,sum/path.len() as f64)
-                        })
-                        .collect();*/
-    
     // get the score based on the alpha bias
     let mut scores:Vec<f64> = Vec::with_capacity(paths.len());
     for i in 0..paths.len(){
@@ -429,19 +417,16 @@ fn main() {
     let data_len = (rows * cols) as usize;
 
 
-    //number of closest drainage to consider
+    //number of closest drainage (manhattan distance not path length) to consider
     let max_drainage:usize = 5;
 
     //terminate dfs for path searching when current length is over this
-    let max_path_length:usize = 10;
+    let max_path_length:usize = 30;
 
-    //path length bias over average accumulation per path range is 0 to 1
+    //path length bias over average accumulation per path (range is 0 to 1) for path selection
     let alpha = 0.9;
 
 
-
-
-    
     println!("Loading network data.");
     let start = Instant::now();
     let file = File::open(&network_file_path).unwrap();
@@ -461,7 +446,7 @@ fn main() {
 
 
     let elapsed = start.elapsed();
-    println!("JSON data successfuly serialized. Searching for closest drainage...");
+    println!("Graph data successfuly serialized. Searching for closest drainage...");
     println!("Elapsed time: {:.2?}",elapsed);
 
 
@@ -537,21 +522,19 @@ fn main() {
     let mut closest_drainage = closest_drainage.lock().unwrap().clone();
 
 
-
-
     //store the paths per node to its connected drainage cells
     let paths_to_drainage: Arc<Mutex<Vec<Vec<Vec<u32>>>>> = Arc::new(Mutex::new(vec![Vec::new();data_len]));
 
 
     //arc mutex progress bar
-    let num_closest:Vec<u64> = closest_drainage
+    let task_count:Vec<u64> = closest_drainage
                                 .iter()
                                 .cloned()
                                 .map(|drain|{
                                     drain.closest.len() as u64
                                 })
                                 .collect();
-    let num_closest_zeros:Vec<u64> = num_closest
+    /*let num_closest_zeros:Vec<u64> = num_closest
                                 .iter()
                                 .cloned()
                                 .filter(|num|{
@@ -559,9 +542,12 @@ fn main() {
                                 })
                                 .collect();
     let non_empty_tasks:u64 = num_closest.iter().sum();
-    let empty_tasks: u64 = num_closest_zeros.len() as u64;
-    let num_tasks:u64 = non_empty_tasks + empty_tasks;
-    //TODO: Review correct number for num tasks
+    //let empty_tasks: u64 = num_closest_zeros.len() as u64;*/
+
+    //let num_tasks:u64 = non_empty_tasks + empty_tasks;
+
+    let num_tasks = task_count.iter().sum();
+
 
 
     let pb = ProgressBar::new(num_tasks);
@@ -579,14 +565,14 @@ fn main() {
 
     let mut num_proccessed = 0;
     let collect_every = 1000;
-
-    
     let mut handles = Vec::new();
     for start_node in 0..data_len {
         let start_node_accum = data[start_node].borrow().accum;
         if start_node_accum < drainage_threshold {
-            //let start_node_accum = data[start_node].borrow().accum;
+            
             let end_nodes = closest_drainage[start_node].borrow_mut().clone().closest;
+
+            //only process if the node is connected to a river cell
             if end_nodes.len() > 0 {
                 for end_node in end_nodes {
                     let clone_data = Arc::clone(&arc_data);
@@ -627,6 +613,7 @@ fn main() {
     }
 
     
+
     //create HAND array
     //represent drainage cells as -1
     //represent no drainage path as -2
