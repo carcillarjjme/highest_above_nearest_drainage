@@ -86,6 +86,18 @@ struct Drainage {
     closest: Vec<u32>,
 }
 
+/// A struct containing the node id of the starting node and its corresponding
+/// end node. The no path flag, if true indicates that the end_node must be ignored
+/// as the start to end node did not meet the criteria (max path lenght could have
+/// been exceeded.)
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct SelectedDrainage {
+    start_node: u32,
+    end_node: u32,
+    no_path:bool
+}
+
+
 /// Returns the ID of a node given its row and column indices
 /// * 'row' - the row index of the node
 /// * 'col' - the column index of the node
@@ -571,7 +583,8 @@ fn main() {
     //create HAND array
     //represent drainage cells as -1
     //represent no drainage path as -2
-    println!("Creating HAND array.");
+    println!("\nCreating HAND array.");
+    let mut selected_drainage:Vec<SelectedDrainage> = Vec::with_capacity(data_len);
     let mut hand: Array2<f64> = Array2::from_elem((rows as usize, cols as usize), -1.0);
     let final_paths = paths_to_drainage.lock().unwrap().clone();
     for (node_id, paths) in final_paths.iter().enumerate() {
@@ -581,6 +594,7 @@ fn main() {
 
         if paths.len() == 0 {
             hand[[row as usize, col as usize]] = -2.0;
+            selected_drainage.push(SelectedDrainage { start_node: node_id as u32, end_node: 0, no_path: true });
             //println!("{node_id} - Closest Drainage: None");
         } else {
             let closest_drainage: u32 = select_paths(paths, &data, alpha);
@@ -592,7 +606,7 @@ fn main() {
             }
 
             hand[[row as usize, col as usize]] = hand_value;
-
+            selected_drainage.push(SelectedDrainage { start_node: node_id as u32, end_node: closest_drainage, no_path: false });
             //println!("{node_id} - Closest Drainage: {closest_drainage}, HAND: {hand_value}");
         }
     }
@@ -605,7 +619,7 @@ fn main() {
         }
     }
 
-    println!("Writing output files.");
+    println!("\nWriting output files.");
     let output_hand_file = format!(
         "hand_dt{}_md{}_mpl{}_alpha{}.npy",
         drainage_threshold, max_drainage, max_path_length, alpha
@@ -614,8 +628,14 @@ fn main() {
         "neighbors_dt{}_md{}_mpl{}_alpha{}.json",
         drainage_threshold, max_drainage, max_path_length, alpha
     );
+    let output_drainage_file = format!(
+        "drainage_dt{}_md{}_mpl{}_alpha{}.json",
+        drainage_threshold, max_drainage, max_path_length, alpha
+    );
 
-    //write output files
+
+
+    //write hand array
     let writer = BufWriter::new(File::create(format!("results/{}", output_hand_file)).unwrap());
     match hand.write_npy(writer) {
         Ok(_) => {
@@ -629,6 +649,7 @@ fn main() {
         }
     };
 
+    //write identified closest neighbors per cell
     let json_string = serde_json::to_string(&closest_drainage).unwrap();
     let mut file = File::create(format!("results/{}", output_neighbor_file))
         .expect("Unable to create closest_neighbor.json");
@@ -640,6 +661,22 @@ fn main() {
             println!(
                 "An error occured while writing {}. See below:\n{}",
                 output_neighbor_file, err
+            )
+        }
+    };
+
+    //write selected drainage per node
+    let json_string = serde_json::to_string(&selected_drainage).unwrap();
+    let mut file = File::create(format!("results/{}", output_drainage_file))
+        .expect("Unable to create drainage.json");
+    match file.write_all(json_string.as_bytes()) {
+        Ok(_) => {
+            println!("{} was written.", output_drainage_file)
+        }
+        Err(err) => {
+            println!(
+                "An error occured while writing {}. See below:\n{}",
+                output_drainage_file, err
             )
         }
     };
