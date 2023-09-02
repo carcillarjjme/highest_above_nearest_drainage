@@ -41,15 +41,15 @@ struct HandCalculate {
     #[argh(option, short = 't', default = "0.9")]
     drainage_threshold: f64,
 
-    /// maximum number of connected drainage
+    /// maximum number of connected drainage (default = 5)
     #[argh(option, short = 'd', default = "5")]
     max_drainage: usize,
 
-    /// maximum number of connected drainage
+    /// maximum number of connected drainage (default = 30)
     #[argh(option, short = 'l', default = "30")]
     max_path_length: usize,
 
-    /// path length bias over averate accumulation value (range 0 to 1)
+    /// path length bias over average accumulation value (range 0 to 1) (default = 0.9)
     #[argh(option, short = 'a', default = "0.9")]
     alpha: f64,
 
@@ -219,8 +219,7 @@ fn search_drainage(
 ///
 ///  The threshold value catergorizes the cells according to their accumulation values.
 ///
-/// The function is recursive as it is based from a **depth-first-search** algorithm but without keeping track
-/// of the explored nodes.
+/// The function is recursive as it is based from a **depth-first-search** algorithm.
 ///
 /// * 'node_id' - the ID of the node where the search starts from
 /// * 'end' - the ID of the node where the search ends at
@@ -232,7 +231,7 @@ fn search_drainage(
 /// * 'visited' - a vector containing ids of visited notes to prevent cyclic traversals
 /// * 'result' - a reference to a vector that would contain the possible paths generated from the search
 /// * 'data' - a reference to the network data comprised of all nodes in the digital elevation model
-fn dfs_modified(
+fn dfs_recursive(
     node_id: u32,
     end: u32,
     rows: u32,
@@ -265,7 +264,7 @@ fn dfs_modified(
                 && (path.len() < max_path_length)
             {
                 if !path.contains(neighbor_id) {
-                    dfs_modified(
+                    dfs_recursive(
                         *neighbor_id,
                         end,
                         rows,
@@ -315,7 +314,7 @@ fn find_all_paths(
     let mut result: Vec<Vec<u32>> = Vec::with_capacity(100);
     let mut path: Vec<u32> = Vec::with_capacity(100);
     let mut visited: Vec<u32> = Vec::with_capacity(100);
-    dfs_modified(
+    dfs_recursive(
         start,
         end,
         rows,
