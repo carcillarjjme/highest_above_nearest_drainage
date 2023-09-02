@@ -33,7 +33,7 @@ The input data required is the network data in JSON format. With the following s
         "elev": 629.0, 
         "neighbors": [[1, 3], [0, 3]] 
         }
-    //-- snip --//
+    //-- snip --
 }
 ```
 The keys represent the node id which is generated from the rows and columns of the current node with a simple function:
@@ -119,10 +119,10 @@ $$P_j = \{\text{PS}_0,\text{PS}_1,...\text{PS}_k\}$$
 $$ T = \{ n_0,n_1...n_i \in N| f(n_0) = f(n_1) \cdots = f(n_j) = \max(P_j)\}$$
 
 The final node selection will be given as,
-$$n_f = \argmax(n_i) {f(n_i)}$$
+$$n_f = \text{arg max}(n_i) {f(n_i)}$$
 
 In case of a tie the final node will be chosen as,
-$$n_j^* = \argmax (n_i) \{n_i \in T: g(n_i)\}$$
+$$n_j^* = \text{arg max} (n_i) \{n_i \in T: g(n_i)\}$$
 
 Where,
 $$\begin{align*}
