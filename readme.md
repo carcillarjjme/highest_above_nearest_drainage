@@ -100,26 +100,50 @@ To improve searching speed, the user provied **max_path_length** parameter termi
 ### Selecting the Final Path
 Once all of the possible paths for all connected drainage nodes are identified, each will be ranked according to a certain score controlled by the **alpha** $(\alpha)$. This is a range of value from 0 to 1 which controls the path length bias over the average accumulation in the path. This way, the user can adjust which factor dictates the final HAND value for node more. The paths are score as follows:
 
-$$\text{LS}_j = 1 - \dfrac{l_j}{\sum_{i=0}^n l_i}$$
-$$\text{AS}_j = \dfrac{\bar{a}_j}{\sum_{i=0}^n \bar{a}_i}$$
-$$\text{PS}_j = \alpha \cdot \text{LS}_j + (1-\alpha) \cdot \text{AS}_j$$
+<!-- $$
+\text{LS}_j = 1 - \frac{l_j}{\sum_{i=0}^n l_i}
+$$ -->
+<p align="center">
+<img src="https://latex.codecogs.com/svg.image?\color{White}%5Ctext%7BLS%7D_j%20%3D%201%20-%20%5Cfrac%7Bl_j%7D%7B%5Csum_%7Bi%3D0%7D%5En%20l_i%7D%0D" />
+</p>
+
+
+<!-- $$
+\text{AS}_j = \frac{\bar{a}_j}{\sum_{i=0}^n \bar{a}_i}
+$$ -->
+<p align="center">
+<img src="https://latex.codecogs.com/svg.image?\color{White}%5Ctext%7BAS%7D_j%20%3D%20%5Cfrac%7B%5Cbar%7Ba%7D_j%7D%7B%5Csum_%7Bi%3D0%7D%5En%20%5Cbar%7Ba%7D_i%7D%0D" />
+</p>
+
+
+<!-- $$
+\text{PS}_j = \alpha \cdot \text{LS}_j + (1-\alpha) \cdot \text{AS}_j
+$$ -->
+<p align="center">
+<img src="https://latex.codecogs.com/svg.image?\color{White}%5Ctext%7BPS%7D_j%20%3D%20%5Calpha%20%5Ccdot%20%5Ctext%7BLS%7D_j%20%2B%20(1-%5Calpha)%20%5Ccdot%20%5Ctext%7BAS%7D_j%0D" />
+</p>
 
 Where,
 
-$$
-\begin{align}
+<!-- $$
+\begin{align*}
 l_j &= \text{length of path } j\\
 \bar{a}_j &= \text{average accumulation along path } j\\
 \text{LS}_j &= \text{path length score}\\
 \text{AS}_j &= \text{average accumulation score}\\
 \text{PS}_j &= \text{path final score}
-\end{align}
-$$
+\end{align*}
+$$ -->
+<p align="center">
+<img src="https://latex.codecogs.com/svg.image?\color{White}%5Cbegin%7Balign*%7D%0D%0Al_j%20%26%3D%20%5Ctext%7Blength%20of%20path%20%7D%20j%5C%5C%0D%0A%5Cbar%7Ba%7D_j%20%26%3D%20%5Ctext%7Baverage%20accumulation%20along%20path%20%7D%20j%5C%5C%0D%0A%5Ctext%7BLS%7D_j%20%26%3D%20%5Ctext%7Bpath%20length%20score%7D%5C%5C%0D%0A%5Ctext%7BAS%7D_j%20%26%3D%20%5Ctext%7Baverage%20accumulation%20score%7D%5C%5C%0D%0A%5Ctext%7BPS%7D_j%20%26%3D%20%5Ctext%7Bpath%20final%20score%7D%0D%0A%5Cend%7Balign*%7D%0D" />
+</p>
 
 To select the drainage node for the current node, we let,
 $$f(n_i) = f: n_i \mapsto \text{PS}_i$$
 $$g(n_i) = g: n_i \mapsto e_i$$
-$$P_j = \{\text{PS}_0,\text{PS}_1,...\text{PS}_k\}$$
+$$
+P_j = \left{\text{PS}_0,\text{PS}_1,...\text{PS}_k\right}
+$$
 $$ T = \{ n_0,n_1...n_i \in N| f(n_0) = f(n_1) \cdots = f(n_j) = \max(P_j)\}$$
 
 The final node selection will be given as,
