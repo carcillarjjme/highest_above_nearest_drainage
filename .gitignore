@@ -1,3 +1,7 @@
 /target
 /results
+/accumulations/cells.json
+/accumulations/cells_mini.json
+/accumulations/closest_neighbor.json
+/accumulations/hand.npy
 
