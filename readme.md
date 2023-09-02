@@ -104,13 +104,15 @@ $$\text{AS}_j = \frac{\bar{a}_j}{\sum_{i=0}^n \bar{a}_i}$$
 $$\text{PS}_j = \alpha \cdot \text{LS}_j + (1-\alpha) \cdot \text{AS}_j$$
 
 Where,
-$$\begin{align*}
-    l_j &= \text{length of path } j\\
-    \bar{a}_j &= \text{average accumulation along path } j\\
-    \text{LS}_j &= \text{path length score}\\
-    \text{AS}_j &= \text{average accumulation score}\\
-    \text{PS}_j &= \text{path final score}
-\end{align*}$$
+$$
+\begin{align}
+l_j &= \text{length of path } j\\
+\bar{a}_j &= \text{average accumulation along path } j\\
+\text{LS}_j &= \text{path length score}\\
+\text{AS}_j &= \text{average accumulation score}\\
+\text{PS}_j &= \text{path final score}
+\end{align}
+$$
 
 To select the drainage node for the current node, we let,
 $$f(n_i) = f: n_i \mapsto \text{PS}_i$$
