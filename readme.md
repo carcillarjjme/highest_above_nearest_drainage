@@ -125,14 +125,14 @@ In case of a tie the final node will be chosen as,
 $$n_j^* = \text{arg max} (n_i) \{n_i \in T: g(n_i)\}$$
 
 Where,
-$$\begin{align*}
+$$\begin{aligned}
     f(n_i) &= \text{Function mapping the node $n_i$ to its path score PS$_i$}\\
     g(n_i) &= \text{Function mapping the node $n_i$ to its elevation $e_i$}\\
     P_j &= \text{Scores of paths from starting node $n_j$ to all its connected drainage nodes}\\
     k &= \text{number of connected nodes to $n_j$}\\
     T &= \text{the set of nodes with scores equal to the max score $\max(P_j)$}\\
     n_j^* &= \text{the selected drainage for $n_j$}
-\end{align*}$$
+\end{aligned}$$
 
 This all boils down with the highest path score and in case of tie, choose the neighbor with the higher elevation.
 
