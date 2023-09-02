@@ -141,10 +141,18 @@ $$ -->
 To select the drainage node for the current node, we let,
 $$f(n_i) = f: n_i \mapsto \text{PS}_i$$
 $$g(n_i) = g: n_i \mapsto e_i$$
-$$
-P_j = \left{\text{PS}_0,\text{PS}_1,...\text{PS}_k\right}
-$$
-$$ T = \{ n_0,n_1...n_i \in N| f(n_0) = f(n_1) \cdots = f(n_j) = \max(P_j)\}$$
+<!-- $$
+P_j = \{\text{PS}_0,\text{PS}_1,...\text{PS}_k\}
+$$ -->
+<p align="center">
+<img src="https://latex.codecogs.com/svg.image?\color{White}P_j%20%3D%20%5C%7B%5Ctext%7BPS%7D_0%2C%5Ctext%7BPS%7D_1%2C...%5Ctext%7BPS%7D_k%5C%7D%0D" />
+</p>
+
+<!-- $$
+T = \{ n_0,n_1...n_i \in N| f(n_0) = f(n_1) \cdots = f(n_j) = \max(P_j)\}
+$$ -->
+<p align="center">
+<img src="https://latex.codecogs.com/svg.image?\color{White}T%20%3D%20%5C%7B%20n_0%2Cn_1...n_i%20%5Cin%20N%7C%20f(n_0)%20%3D%20f(n_1)%20%5Ccdots%20%3D%20f(n_j)%20%3D%20%5Cmax(P_j)%5C%7D%0D" /></p>
 
 The final node selection will be given as,
 $$n_f = \text{arg max}(n_i) {f(n_i)}$$
@@ -153,23 +161,32 @@ In case of a tie the final node will be chosen as,
 $$n_j^* = \text{arg max} (n_i) \{n_i \in T: g(n_i)\}$$
 
 Where,
-$$\begin{align*}
+<!-- $$
+\begin{align*}
     f(n_i) &= \text{Function mapping the node $n_i$ to its path score PS$_i$}\\
     g(n_i) &= \text{Function mapping the node $n_i$ to its elevation $e_i$}\\
     P_j &= \text{Scores of paths from starting node $n_j$ to all its connected drainage nodes}\\
     k &= \text{number of connected nodes to $n_j$}\\
     T &= \text{the set of nodes with scores equal to the max score $\max(P_j)$}\\
     n_j^* &= \text{the selected drainage for $n_j$}
-\end{align*}$$
+\end{align*}
+$$ -->
+<p align="center">
+<img src="https://latex.codecogs.com/svg.image?\color{White}%5Cbegin%7Balign*%7D%0D%0A%20%20%20%20f(n_i)%20%26%3D%20%5Ctext%7BFunction%20mapping%20the%20node%20%24n_i%24%20to%20its%20path%20score%20PS%24_i%24%7D%5C%5C%0D%0A%20%20%20%20g(n_i)%20%26%3D%20%5Ctext%7BFunction%20mapping%20the%20node%20%24n_i%24%20to%20its%20elevation%20%24e_i%24%7D%5C%5C%0D%0A%20%20%20%20P_j%20%26%3D%20%5Ctext%7BScores%20of%20paths%20from%20starting%20node%20%24n_j%24%20to%20all%20its%20connected%20drainage%20nodes%7D%5C%5C%0D%0A%20%20%20%20k%20%26%3D%20%5Ctext%7Bnumber%20of%20connected%20nodes%20to%20%24n_j%24%7D%5C%5C%0D%0A%20%20%20%20T%20%26%3D%20%5Ctext%7Bthe%20set%20of%20nodes%20with%20scores%20equal%20to%20the%20max%20score%20%24%5Cmax(P_j)%24%7D%5C%5C%0D%0A%20%20%20%20n_j%5E*%20%26%3D%20%5Ctext%7Bthe%20selected%20drainage%20for%20%24n_j%24%7D%0D%0A%5Cend%7Balign*%7D%0D" />
+</p>
 
 This all boils down with the highest path score and in case of tie, choose the neighbor with the higher elevation.
 
 ### Calculating the HAND Values
 Once the drainage node $n_j^*$ for a node $n_j$ is determined the associated HAND value $h_j$ is then calculated as
-$$h_j = \begin{cases}
+<!-- $$
+h_j = \begin{cases}
     g(n_j) - g(n_j^*), & \text{if\hspace{1em}} g(n_j) - g(n_j^*) \geq 0\\
     0, & \text{if\hspace{1em}} g(n_j) - g(n_j^*) < 0
-\end{cases}$$
+\end{cases}
+$$ -->
+<p align="center">
+<img src="https://latex.codecogs.com/svg.image?\color{White}h_j%20%3D%20%5Cbegin%7Bcases%7D%0D%0A%20%20%20%20g(n_j)%20-%20g(n_j%5E*)%2C%20%26%20%5Ctext%7Bif%5Chspace%7B1em%7D%7D%20g(n_j)%20-%20g(n_j%5E*)%20%5Cgeq%200%5C%5C%0D%0A%20%20%20%200%2C%20%26%20%5Ctext%7Bif%5Chspace%7B1em%7D%7D%20g(n_j)%20-%20g(n_j%5E*)%20%3C%200%0D%0A%5Cend%7Bcases%7D%0D" /></p>
 
 ## Optimizations Done
 Both drainage search and path finding algorithms were implemented via multithreading to improve runtime speed. This result into magnitudes of improvements over a single threaded operation. Proper data structures were also selected such as employing hashsets to check whether or not a node is already explored. Double ended queues were used for operations that pops elements from the front of a vector. Some vectors were also pre-allocatted at some estimated capacity.
