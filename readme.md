@@ -99,11 +99,13 @@ To improve searching speed, the user provied **max_path_length** parameter termi
 
 ### Selecting the Final Path
 Once all of the possible paths for all connected drainage nodes are identified, each will be ranked according to a certain score controlled by the **alpha** $(\alpha)$. This is a range of value from 0 to 1 which controls the path length bias over the average accumulation in the path. This way, the user can adjust which factor dictates the final HAND value for node more. The paths are score as follows:
+
 $$\text{LS}_j = 1 - \dfrac{l_j}{\sum_{i=0}^n l_i}$$
 $$\text{AS}_j = \dfrac{\bar{a}_j}{\sum_{i=0}^n \bar{a}_i}$$
 $$\text{PS}_j = \alpha \cdot \text{LS}_j + (1-\alpha) \cdot \text{AS}_j$$
 
 Where,
+
 $$
 \begin{align}
 l_j &= \text{length of path } j\\
