@@ -592,7 +592,9 @@ fn main() {
         let col = node.col;
 
         if paths.len() == 0 {
-            hand[[row as usize, col as usize]] = -2.0;
+            if node.accum < drainage_threshold {
+                hand[[row as usize, col as usize]] = -2.0
+            }
             selected_drainage.push(SelectedDrainage { start_node: node_id as u32, end_node: 0, no_path: true });
             //println!("{node_id} - Closest Drainage: None");
         } else {
