@@ -18,6 +18,7 @@ use std::thread;
 use std::time::Instant;
 use std::{fs::File, io::Write};
 
+
 //command line interface
 #[derive(FromArgs)]
 /// Calculates the Heighest Above Nearest Drainage (HAND) values give the network data.\n
@@ -94,7 +95,9 @@ struct Drainage {
 struct SelectedDrainage {
     start_node: u32,
     end_node: u32,
-    no_path:bool
+    no_path:bool, 
+    mean_accum: f64, //-1 means the node is already a drainage node
+    path: Vec<u32>
 }
 
 
@@ -130,6 +133,13 @@ fn manhattan(id_a: u32, id_b: u32, cols: u32) -> u32 {
     let dc = (ca as i32) - (cb as i32);
     return (dr.abs() + dc.abs()) as u32;
 }
+
+
+
+
+
+
+
 
 /// Searches for all drainage nodes hat can be traversed from a given **start_index**. The
 /// function employs a **breadth-first-search** as facilitated by the Node neighbors/children.
@@ -334,13 +344,13 @@ fn find_all_paths(
 }
 
 /// This function returns the id of the chosen drainage cell passing through the different
-/// candidate paths.
+/// candidate paths; the vector containing the paths and; the mean accumulation along the path
 ///
 /// * 'paths' - vector containg paths from a starting node to its end nodes
 /// * 'data' - a reference to the network data comprised of all nodes in the digital elevation model
 /// * 'alpha' - controls the *path length bias* over the *accumulation bias* on the basis that
 ///             the shorter the path the better the candidate and the higher average accumulation the better
-fn select_paths(paths: &Vec<Vec<u32>>, data: &Vec<RefCell<Node>>, alpha: f64) -> u32 {
+fn select_paths(paths: &Vec<Vec<u32>>, data: &Vec<RefCell<Node>>, alpha: f64) -> (u32,Vec<u32>,f64) {
     if paths.len() == 0 {
         panic!("Tries to select path from an empty path list.");
     }
@@ -390,7 +400,20 @@ fn select_paths(paths: &Vec<Vec<u32>>, data: &Vec<RefCell<Node>>, alpha: f64) ->
 
     //if no ties, return index of drainage cell
     if filtered_paths.len() == 1 {
-        return *filtered_paths[0].last().unwrap();
+        //solve for the mean of the chosen path
+        let mut sum: f64 = 0.0;
+        for node_id in filtered_paths[0].clone() {
+            let accum = data[node_id as usize].borrow().to_owned().accum;
+            sum += accum;
+        }
+        let mean_accum = sum/(filtered_paths[0].len() as f64);
+
+
+
+
+
+
+        return (*filtered_paths[0].last().unwrap(),filtered_paths[0].clone(),mean_accum);
     } else {
         //resolve ties by choosing drainage with higher elevation for a conservative hand value
         filtered_paths.sort_by(|path1, path2| {
@@ -400,8 +423,18 @@ fn select_paths(paths: &Vec<Vec<u32>>, data: &Vec<RefCell<Node>>, alpha: f64) ->
             //sort in descending order of elevation
             drainage2.cmp(&drainage1)
         });
+        
 
-        return *filtered_paths[0].last().unwrap();
+        //solve for the mean of the chosen path
+        let mut sum: f64 = 0.0;
+        for node_id in filtered_paths[0].clone() {
+            let accum = data[node_id as usize].borrow().to_owned().accum;
+            sum += accum;
+        }
+        let mean_accum = sum/(filtered_paths[0].len() as f64);
+
+
+        return (*filtered_paths[0].last().unwrap(),filtered_paths[0].clone(),mean_accum);
     }
 }
 
@@ -449,6 +482,8 @@ fn main() {
     let pb: Arc<Mutex<ProgressBar>> = Arc::new(Mutex::new(pb));
 
     //initialize closest_drainage with empth drainage structs
+    // the vector is filled with Drainage structs which contains
+    // the id of the node and the closest drainage/s to that node
     let mut closest_drainage: Vec<Drainage> = Vec::with_capacity(data_len);
     for i in 0..data_len {
         let empty_drainage = Drainage {
@@ -579,12 +614,14 @@ fn main() {
         handles.pop().unwrap().join().unwrap();
     }
 
-    //create HAND array
+    //create HAND array, average accumulation array per path
     //represent drainage cells as -1
     //represent no drainage path as -2
     println!("\nCreating HAND array.");
     let mut selected_drainage:Vec<SelectedDrainage> = Vec::with_capacity(data_len);
     let mut hand: Array2<f64> = Array2::from_elem((rows as usize, cols as usize), -1.0);
+    let mut ave_path_accum_array: Array2<f64> = Array2::from_elem((rows as usize, cols as usize), -1.0);
+
     let final_paths = paths_to_drainage.lock().unwrap().clone();
     for (node_id, paths) in final_paths.iter().enumerate() {
         let node = data[node_id].borrow_mut().to_owned();
@@ -593,12 +630,18 @@ fn main() {
 
         if paths.len() == 0 {
             if node.accum < drainage_threshold {
-                hand[[row as usize, col as usize]] = -2.0
+                hand[[row as usize, col as usize]] = -2.0;
+                ave_path_accum_array[[row as usize, col as usize]] = -2.0;
             }
-            selected_drainage.push(SelectedDrainage { start_node: node_id as u32, end_node: 0, no_path: true });
+            selected_drainage.push(SelectedDrainage { start_node: node_id as u32,
+                                                      end_node: 0,
+                                                      no_path: true,
+                                                      mean_accum: -1.0, //negative means no mean path accumulation
+                                                      path: Vec::new() //empty path
+                                                    });
             //println!("{node_id} - Closest Drainage: None");
         } else {
-            let closest_drainage: u32 = select_paths(paths, &data, alpha);
+            let (closest_drainage,selected_path,mean_path_accum) = select_paths(paths, &data, alpha);
             let elev = node.elev;
             let drain_elev = data[closest_drainage as usize].borrow_mut().to_owned().elev;
             let mut hand_value = elev - drain_elev;
@@ -606,8 +649,15 @@ fn main() {
                 hand_value = 0.0
             }
 
+            ave_path_accum_array[[row as usize, col as usize]] = mean_path_accum;
+
             hand[[row as usize, col as usize]] = hand_value;
-            selected_drainage.push(SelectedDrainage { start_node: node_id as u32, end_node: closest_drainage, no_path: false });
+            selected_drainage.push(SelectedDrainage { start_node: node_id as u32,
+                                                      end_node: closest_drainage, 
+                                                      no_path: false,
+                                                      mean_accum: mean_path_accum,
+                                                      path: selected_path
+                                                     });
             //println!("{node_id} - Closest Drainage: {closest_drainage}, HAND: {hand_value}");
         }
     }
@@ -623,6 +673,10 @@ fn main() {
     println!("\nWriting output files.");
     let output_hand_file = format!(
         "hand_dt{}_md{}_mpl{}_alpha{}.npy",
+        drainage_threshold, max_drainage, max_path_length, alpha
+    );
+    let output_ave_path_accum_file = format!(
+        "ave_path_accum_dt{}_md{}_mpl{}_alpha{}.npy",
         drainage_threshold, max_drainage, max_path_length, alpha
     );
     let output_neighbor_file = format!(
@@ -646,6 +700,21 @@ fn main() {
             println!(
                 "An error occured while writing {}. See below:\n{}",
                 output_hand_file, err
+            )
+        }
+    };
+
+
+    //write ave_path_accum array
+    let writer = BufWriter::new(File::create(format!("results/{}", output_ave_path_accum_file)).unwrap());
+    match ave_path_accum_array.write_npy(writer) {
+        Ok(_) => {
+            println!("{} was written.", output_ave_path_accum_file)
+        }
+        Err(err) => {
+            println!(
+                "An error occured while writing {}. See below:\n{}",
+                output_ave_path_accum_file, err
             )
         }
     };
